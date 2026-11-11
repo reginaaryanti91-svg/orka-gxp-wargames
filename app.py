@@ -3,16 +3,14 @@ from google import genai
 from google.genai import types
 import streamlit as st
 
-# Page setup
+# 1. Page Configuration
 st.set_page_config(
     page_title="GxP Compliance War Room", page_icon="🛡️", layout="centered"
 )
 st.title("🛡️ Inspector Vance — GxP War Game Console")
-st.caption(
-    "Interactive Regulatory Auditor testing 21 CFR Part 11 & CSA Compliance"
-)
+st.caption("Interactive AI Auditor testing 21 CFR Part 11 & CSA Compliance")
 
-# Secret API key retrieval
+# 2. Retrieve Gemini API Key
 api_key = None
 if "gemini" in st.secrets and "GEMINI_API_KEY" in st.secrets["gemini"]:
   api_key = st.secrets["gemini"]["GEMINI_API_KEY"].strip()
@@ -24,46 +22,61 @@ if not api_key:
 
 if api_key:
   try:
-    # Initialize Google GenAI client
+    # Initialize client once
     client = genai.Client(api_key=api_key)
 
     system_instruction = """You are Inspector Alex Vance, a senior lead regulatory auditor 
         representing a joint task force of FDA, EMA, TGA, and HSA. You are conducting an audit 
-        on 21 CFR Part 11, Computer Software Assurance (CSA), and AI model drift compliance."""
+        on 21 CFR Part 11, Computer Software Assurance (CSA), and AI model drift compliance.
+        Keep responses sharp, concise, direct, and under 250 words to maintain fast engagement."""
 
     if "messages" not in st.session_state:
       st.session_state.messages = []
 
-    # Render history
+    # Render previous conversation history
     for msg in st.session_state.messages:
       with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-    # User Input
+    # 3. Streamed User Input & Model Response
     if prompt := st.chat_input(
         "Present your strategy or remediation plan to the inspector..."
     ):
+      # Display user message immediately
       st.session_state.messages.append({"role": "user", "content": prompt})
       with st.chat_message("user"):
         st.markdown(prompt)
 
+      # Stream the assistant response chunk-by-chunk
       with st.chat_message("assistant"):
-        with st.spinner("Inspector Vance is reviewing your submission..."):
-          # Updated to use gemini-3.8-flash
-          response = client.models.generate_content(
-              model="gemini-3.8-flash",
+        response_placeholder = st.empty()
+        full_response = ""
+
+        try:
+          # Use generate_content_stream for instantaneous output
+          # Use gemini-3.5-flash-lite for lowest latency
+          stream = client.models.generate_content_stream(
+              model="gemini-3.5-flash-lite",
               contents=prompt,
               config=types.GenerateContentConfig(
                   system_instruction=system_instruction,
                   temperature=0.3,
+                  max_output_tokens=500,  # Limits lengthy outputs to reduce wait times
               ),
           )
-          reply = response.text
-          st.markdown(reply)
+
+          for chunk in stream:
+            full_response += chunk.text
+            response_placeholder.markdown(full_response + "▌")
+
+          # Finalize output without cursor
+          response_placeholder.markdown(full_response)
           st.session_state.messages.append(
-              {"role": "assistant", "content": reply}
+              {"role": "assistant", "content": full_response}
           )
+        except Exception as e:
+          st.error(f"Audit Connection Error: {e}")
   except Exception as e:
-    st.error(f"Audit Connection Error: {e}")
+    st.error(f"Initialization Error: {e}")
 else:
-  st.warning("Please provide a valid Gemini API key to run the audit console.")
+  st.warning("Please enter your Gemini API Key to activate the war room.")
