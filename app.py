@@ -1,107 +1,65 @@
-import streamlit as st
+import os
 from google import genai
 from google.genai import types
+import streamlit as st
 
-# Page setup & branding
+# Configure page layout
 st.set_page_config(
-    page_title="Inspector O.R.K.A. | GxP War Games",
-    page_icon="⚖️",
-    layout="wide",
+    page_title="GxP Compliance War Room", page_icon="🛡️", layout="centered"
 )
+st.title("🛡️ Inspector Vance — GxP War Game Console")
 
-# Sidebar with scenario briefs & instructions
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/orca.png", width=70)
-    st.title("ORKA Life Science Partner")
-    st.subheader("Session 3: GxP War Games")
-    st.markdown("---")
-    st.markdown("**War Games Scenarios:**")
-    st.markdown("1. **Round 1:** CSA Risk Rationale & Silent Cloud Updates")
-    st.markdown("2. **Round 2:** Non-Deterministic AI & Part 11 Audit Trail")
-    st.markdown("3. **Round 3:** QC Raw Data Integrity & Peak Integration")
-    st.markdown("---")
-    if st.button("🔄 Reset Inspection Terminal", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.chat = None
-        st.rerun()
+# 1. Extract & sanitize the API key
+api_key = None
 
-st.title("🚨 Inspector O.R.K.A. — Regulatory Terminal")
-st.caption("Joint US FDA / EMA / TGA / HSA Enforcement Taskforce | 21 CFR Part 11 & CSA")
+if "gemini" in st.secrets and "GEMINI_API_KEY" in st.secrets["gemini"]:
+  api_key = st.secrets["gemini"]["GEMINI_API_KEY"].strip()
+elif "GEMINI_API_KEY" in os.environ:
+  api_key = os.environ["GEMINI_API_KEY"].strip()
 
-# Initialize Gemini Client using Streamlit Secrets
-api_key = st.secrets.get("GEMINI_API_KEY")
+# Fallback prompt if key is missing
 if not api_key:
-    st.error("Missing `GEMINI_API_KEY` in Streamlit Secrets. Please configure it in settings.")
-    st.stop()
+  api_key = st.text_input("Enter your Gemini API Key:", type="password").strip()
 
-client = genai.Client(api_key=api_key)
+# 2. Execute app if key is present
+if api_key:
+  try:
+    # Initialize Client with your key (works for both AQ. and AIzaSy keys)
+    client = genai.Client(api_key=api_key)
 
-SYSTEM_PROMPT = """
-You are "Inspector O.R.K.A." (Operational Risk & Knowledge Auditor), a Lead Regulatory Examiner representing a harmonized enforcement taskforce from the US FDA, EMA, TGA, and Singapore HSA.
-You are conducting an unannounced, high-stakes inspection of a biopharmaceutical consulting team during the GxP War Games.
+    system_instruction = """You are Inspector Alex Vance, a senior lead regulatory auditor 
+        testing life sciences teams on 21 CFR Part 11 and CSA compliance."""
 
-YOUR RULES OF ENGAGEMENT:
-1. Demeanor: Formal, skeptical, unyielding, authoritative. Never cheerlead, flatter, or give answers away.
-2. Focus Areas: 21 CFR Part 11, FDA Computer Software Assurance (CSA), EU Annex 11, ALCOA+, and non-deterministic AI auditability.
-3. Challenge Tactics:
-   - Demand concrete SOP clauses, regulatory citations, and technical data architecture proof.
-   - Attack buzzwords ('robust prompt', 'agile validation', 'ethical AI'). Demand to know how audit trails under 11.10(e) capture metadata and how 11.200 e-signatures are attributed.
-   - Attack CSA categorizations: challenge teams when they attempt to classify patient safety or batch-release software as low-risk just to avoid scripted testing.
+    if "messages" not in st.session_state:
+      st.session_state.messages = []
 
-TURN EXECUTION FORMAT (Always use this exact structure):
-1. **Auditor Reaction:** 1-2 sentence razor-sharp assessment of their argument.
-2. **The Interrogation:** 1-2 technical challenge questions demanding specific proof or regulatory references.
-3. **Audit Status Meter:**
-   - Current Status: [Compliant / Conditional / Major Finding Imminent / Critical Form 483 Issued]
-   - Compliance Risk: [Low / Moderate / Severe / Critical]
-   - Observation Note: (One sentence identifying their biggest unaddressed vulnerability).
-
-If the team says 'Inspector, conclude our session and provide our final score', provide a formal audit exit summary and a numerical Compliance Score from 0 to 100 based on their performance.
-"""
-
-# Maintain persistent multi-turn chat
-if "messages" not in st.session_state or len(st.session_state.messages) == 0:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": (
-                "**INSPECTION NOTICE:** I am **Inspector O.R.K.A.** representing the joint FDA/EMA/TGA/HSA audit taskforce.\n\n"
-                "The regulatory examination has officially commenced. State your team name, the scenario you are addressing, "
-                "and your technical compliance justification. Do not offer boilerplate generalities."
-            ),
-        }
-    ]
-
-# Render chat history
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    for msg in st.session_state.messages:
+      with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# User prompt handling
-if user_input := st.chat_input("Submit your compliance justification to Inspector O.R.K.A..."):
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    if prompt := st.chat_input(
+        "Present your strategy or remediation plan to the inspector..."
+    ):
+      st.session_state.messages.append({"role": "user", "content": prompt})
+      with st.chat_message("user"):
+        st.markdown(prompt)
 
-    # Format conversation history for Gemini API
-    formatted_contents = []
-    for m in st.session_state.messages:
-        role = "model" if m["role"] == "assistant" else "user"
-        formatted_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
-
-    with st.chat_message("assistant"):
-        with st.spinner("Inspector O.R.K.A. is reviewing regulatory records..."):
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=formatted_contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.2,
-                    ),
-                )
-                inspector_response = response.text
-                st.markdown(inspector_response)
-                st.session_state.messages.append({"role": "assistant", "content": inspector_response})
-            except Exception as e:
-                st.error(f"Audit Connection Error: {str(e)}")
+      with st.chat_message("assistant"):
+        with st.spinner("Inspector Vance is reviewing your submission..."):
+          response = client.models.generate_content(
+              model="gemini-2.5-flash",
+              contents=prompt,
+              config=types.GenerateContentConfig(
+                  system_instruction=system_instruction,
+                  temperature=0.3,
+              ),
+          )
+          reply = response.text
+          st.markdown(reply)
+          st.session_state.messages.append(
+              {"role": "assistant", "content": reply}
+          )
+  except Exception as e:
+    st.error(f"Audit Connection Error: {e}")
+else:
+  st.warning("Please provide a valid Gemini API key.")
